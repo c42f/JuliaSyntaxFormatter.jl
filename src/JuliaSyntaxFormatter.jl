@@ -125,10 +125,31 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, ex[1], K"WS?", K"=", K"WS?", ex[2])
     elseif k == K"."
         emit(ctx, ex[1], K".", ex[2])
+    elseif k == K"..."
+        k1 = kind(ex[1])
+        if k1 == K"Identifier" || k1 == K"tuple"
+            emit(ctx, ex[1], K"WS??", K"...")
+        else
+            # TODO: Need precedence rules to determine whether parens are
+            # actually necessary here :-/
+            emit(ctx, K"(", K"WS??", ex[1], K"WS??", K")", K"WS??", K"...")
+        end
+    elseif k == K"$"
+        emit(ctx, K"$", K"(", K"WS??")
+        format_join(ctx, children(ex), K"WS??", K",", K"WS?")
+        emit(ctx, K"WS??", K")")
     elseif k == K"block"
         emit(ctx, K"begin", K"WS_NL")
         format_join(ctx, children(ex), K"WS_NL")
         emit(ctx, K"WS_NL", K"end")
+    elseif k == K"quote"
+        if kind(ex[1]) == K"block"
+            emit(ctx, K"quote", K"WS_NL")
+            format_join(ctx, children(ex[1]), K"WS_NL")
+            emit(ctx, K"WS_NL", K"end")
+        else
+            emit(ctx, K":", K"(", K"WS??", ex[1], K"WS??", K")")
+        end
     elseif k == K"call"
         if is_infix_op_call(ex)
             # TODO: Precedence - add parens
@@ -161,6 +182,9 @@ function format_tree(ctx::FormatContext, ex)
         end
         stmts = ex[2]
         if numchildren(stmts) != 0
+            if numchildren(bindings) == 0
+                emit(ctx, K"WS_NL")
+            end
             format_join(ctx, children(stmts), K"WS_NL")
             emit(ctx, K"WS_NL")
         end
@@ -187,6 +211,9 @@ function format_tree(ctx::FormatContext, ex)
     elseif k == K"tuple"
         emit(ctx, K"(", K"WS??")
         format_join(ctx, children(ex), K",", K"WS?")
+        if numchildren(ex) == 1
+            emit(ctx, K"WS??", K",")
+        end
         emit(ctx, K"WS??", K")")
     # Lowering stuff
     elseif k == K"lambda"
@@ -237,10 +264,6 @@ function reformat(ex)
     sourcetext(ctx)
 end
 
-function _convert_col(c)
-    StyledStrings.SimpleColor(reinterpret(UInt8, c.r), reinterpret(UInt8, c.g), reinterpret(UInt8,c.b))
-end
-
 function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     @assert !haschildren(ex)
     # See also JuliaLowering._value_string
@@ -265,6 +288,11 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
         str = "$(str)/$(srcex.name_val)"
     end
     return str
+end
+
+function _convert_col(c)
+    u8(x) = UInt8(clamp(round(255*x), typemin(UInt8), typemax(UInt8)))
+    StyledStrings.SimpleColor(u8(c.r), u8(c.g), u8(c.b))
 end
 
 function distinguishable_faces(n)
