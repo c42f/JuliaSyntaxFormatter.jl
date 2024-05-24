@@ -319,18 +319,33 @@ function format(ex::SyntaxTree;
     JuliaSyntaxFormatter.format_tree(ctx, ex)
     JuliaSyntaxFormatter.format_indents(ctx)
 
-    text = Base.AnnotatedString(sourcetext(ctx))
-    idx = 1
     styles = unique(tok.style for tok in ctx.tokens)
     style_map = Dict(zip(styles, distinguishable_faces(length(styles))))
-    for tok in ctx.tokens
-        n = sizeof(tok.text)
-        if !isnothing(tok.style)
-            Base.annotate!(text, idx:idx+n-1, :face=>style_map[tok.style])
+
+    io = Base.AnnotatedIOBuffer()
+    print(io, "# ")
+    for (style_key, style) in style_map
+        if isnothing(style_key)
+            continue
         end
-        idx += n
+        s = Base.AnnotatedString(string(style_key))
+        Base.annotate!(s, firstindex(s):lastindex(s), :face=>style)
+        print(io, " ", s)
     end
-    text
+    println(io)
+
+    idx = 1
+    text = Base.AnnotatedString(sourcetext(ctx))
+    for tok in ctx.tokens
+        n = lastindex(tok.text)
+        if !isnothing(tok.style)
+            Base.annotate!(text, idx:idx-1+n, :face=>style_map[tok.style])
+        end
+        idx += sizeof(tok.text)
+    end
+    println(io, text)
+    seek(io, 0)
+    read(io, Base.AnnotatedString)
 end
 
 function __init__()
