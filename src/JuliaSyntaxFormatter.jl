@@ -125,6 +125,12 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, ex[1], K"WS?", K"=", K"WS?", ex[2])
     elseif k == K"."
         emit(ctx, ex[1], K".", ex[2])
+    elseif k == K"::"
+        if numchildren(ex) == 1
+            emit(ctx, K"::", K"WS??", ex[1])
+        else
+            emit(ctx, ex[1], K"WS??", K"::", K"WS??", ex[2])
+        end
     elseif k == K"..."
         k1 = kind(ex[1])
         if k1 == K"Identifier" || k1 == K"tuple"
@@ -194,6 +200,8 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"end")
     elseif k == K"macrocall"
         format_join(ctx, children(ex), K"WS+")
+    elseif k == K"return"
+        emit(ctx, K"return", K"WS+", ex[1])
     elseif k == K"string"
         emit(ctx, K"\"")
         for (i,c) in enumerate(children(ex))
