@@ -15,6 +15,7 @@ function _insert_kinds()
             "WS+"    # One or more whitespace characters
             "WS??"   # Zero whitespace characters
             "WS_NL"  # Whitespace containing at least one newline
+            "WS_NL-" # Whitespace containing at least one newline with following token indented at parent level
             "WS_NL;" # Whitespace containing at least one newline or single semicolon
         "END_FORMATTING_KINDS"
     ])
@@ -68,6 +69,7 @@ function emit(ctx::FormatContext, k::Kind)
           k == K"WS?"      ? " "  :
           k == K"WS??"     ? ""   :
           k == K"WS_NL"    ? "\n" :
+          k == K"WS_NL-"   ? "\n" :
           k == K"WS_NL;"   ? "\n" :
           JuliaSyntax.untokenize(k, unique=true)
     style = ctx.node_stack[end][2]
@@ -113,6 +115,14 @@ function format_join(ctx::FormatContext, exs, sep_kinds...)
     end
 end
 
+function format_block_body(ctx::FormatContext, ex)
+    if kind(ex) == K"block"
+        format_join(ctx, children(ex), K"WS_NL")
+    else
+        emit(ctx, ex)
+    end
+end
+
 # Transform an expression tree into a stream of tokens and ranges
 function format_tree(ctx::FormatContext, ex)
     if !haschildren(ex)
@@ -147,6 +157,8 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"$", K"(", K"WS??")
         format_join(ctx, children(ex), K"WS??", K",", K"WS?")
         emit(ctx, K"WS??", K")")
+    elseif is_operator(k)
+        format_join(ctx, children(ex), K"WS?", k, K"WS?")
     elseif k == K"block"
         emit(ctx, K"begin", K"WS_NL")
         format_join(ctx, children(ex), K"WS_NL")
@@ -170,6 +182,20 @@ function format_tree(ctx::FormatContext, ex)
         if numchildren(ex[2]) != 0
             emit(ctx, K"WS_NL")
             format_join(ctx, children(ex[2]), K"WS_NL")
+        end
+        emit(ctx, K"WS_NL", K"end")
+    elseif k == K"if"
+        emit(ctx, K"if", K"WS+", ex[1], K"WS_NL")
+        format_block_body(ctx, ex[2])
+        e = numchildren(ex) > 2 ? ex[3] : nothing
+        while !isnothing(e) && kind(e) == K"elseif"
+            emit(ctx, K"WS_NL-", K"elseif", K"WS+", e[1], K"WS_NL")
+            format_block_body(ctx, e[2])
+            e = numchildren(e) > 2 ? e[3] : nothing
+        end
+        if !isnothing(e)
+            emit(ctx, K"WS_NL-", K"else", K"WS_NL")
+            format_block_body(ctx, e)
         end
         emit(ctx, K"WS_NL", K"end")
     elseif k == K"local" || k == K"global"
@@ -230,11 +256,6 @@ function format_tree(ctx::FormatContext, ex)
         end
         emit(ctx, K"WS??", K")")
     # Lowering stuff
-    elseif k == K"lambda"
-        emit(ctx, K"(")
-        format_join(ctx, ex.lambda_info.args, K",", K"WS?")
-        emit(ctx, K")", K"->")
-        format_tree(ctx, ex[1])
     else
         style = ctx.node_stack[end][2]
         emit(ctx, FormatToken(kind(ex), string("---",kind(ex),"---"), true, style), K"WS_NL")
@@ -266,8 +287,9 @@ function format_indents(ctx::FormatContext)
     end
 
     for (i,tok) in enumerate(ctx.tokens)
-        if tok.kind == K"WS_NL"
-            ctx.tokens[i] = FormatToken(tok.kind, "\n"*"    "^indent[i], true, tok.style)
+        if tok.kind == K"WS_NL" || tok.kind == K"WS_NL-" 
+            ind = indent[i] - (tok.kind == K"WS_NL-")
+            ctx.tokens[i] = FormatToken(tok.kind, "\n"*"    "^ind, true, tok.style)
         end
     end
 end
@@ -279,6 +301,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     str = k == K"Identifier" || k == K"MacroName" || is_operator(k) ? ex.name_val :
           k == K"Placeholder" ? ex.name_val :
           k == K"SSAValue"   ? "ssa"                 :
+          k == K"label"      ? "label"               :
           k == K"core"       ? "core.$(ex.name_val)" :
           k == K"top"        ? "top.$(ex.name_val)"  :
           k == K"Symbol"     ? ":$(ex.name_val)" :
@@ -286,7 +309,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
           k == K"slot"       ? "slot"   :
           repr(get(ex, :value, nothing))
     id = get(ex, :var_id, nothing)
-    if !isnothing(id) && (k == K"SSAValue" || include_var_id)
+    if !isnothing(id) && (k == K"SSAValue" || k == K"label" || k == K"slot" || include_var_id)
         idstr = replace(string(id),
                         "0"=>"₀", "1"=>"₁", "2"=>"₂", "3"=>"₃", "4"=>"₄",
                         "5"=>"₅", "6"=>"₆", "7"=>"₇", "8"=>"₈", "9"=>"₉")
