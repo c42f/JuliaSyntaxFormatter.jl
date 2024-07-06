@@ -6,7 +6,7 @@ using StyledStrings
 using Colors
 
 using JuliaSyntax: Kind, haschildren, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, is_operator, has_flags
-using JuliaLowering: SyntaxTree
+using JuliaLowering: SyntaxTree, provenance
 
 function _insert_kinds()
     JuliaSyntax.insert_kinds!(JuliaSyntaxFormatter, 2, [
@@ -300,24 +300,32 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     k = kind(ex)
     str = k == K"Identifier" || k == K"MacroName" || is_operator(k) ? ex.name_val :
           k == K"Placeholder" ? ex.name_val :
-          k == K"SSAValue"   ? "ssa"                 :
+          k == K"SSAValue"   ? "%"                   :
+          k == K"BindingId"  ? "#"                   :
           k == K"label"      ? "label"               :
-          k == K"core"       ? "core.$(ex.name_val)" :
-          k == K"top"        ? "top.$(ex.name_val)"  :
-          k == K"Symbol"     ? ":$(ex.name_val)" :
+          k == K"core"       ? "Core.$(ex.name_val)" :
+          k == K"top"        ? "Base.$(ex.name_val)" : # top === Base except for bootstrap
+          k == K"Symbol"     ? ":$(ex.name_val)"     :
           k == K"globalref"  ? "$(ex.mod).$(ex.name_val)" :
+          k == K"symbolic_label" ? "@label $(ex.name_val)" :
           k == K"slot"       ? "slot"   :
           repr(get(ex, :value, nothing))
     id = get(ex, :var_id, nothing)
-    if !isnothing(id) && (k == K"SSAValue" || k == K"label" || k == K"slot" || include_var_id)
+    if isnothing(id)
+        id = get(ex, :id, nothing)
+    end
+    if !isnothing(id) && (k == K"SSAValue" || k == K"BindingId" || k == K"label" || k == K"slot" || include_var_id)
         idstr = replace(string(id),
                         "0"=>"₀", "1"=>"₁", "2"=>"₂", "3"=>"₃", "4"=>"₄",
                         "5"=>"₅", "6"=>"₆", "7"=>"₇", "8"=>"₈", "9"=>"₉")
         str = "$(str).$idstr"
     end
-    if k == K"slot"
-        srcex = SyntaxTree(ex.graph, ex.source)
-        str = "$(str)/$(srcex.name_val)"
+    if k == K"slot" || k == K"BindingId"
+        p = provenance(ex)[1]
+        while kind(p) != K"Identifier"
+            p = provenance(p)[1]
+        end
+        str = "var\"$(str)/$(p.name_val)\""
     end
     return str
 end
