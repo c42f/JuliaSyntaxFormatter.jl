@@ -7,4 +7,7 @@ with support for "semantic colouring". For example, one can run JuliaLowering's
 scope analysis pass to determine the identity of each name in the code (tagging
 it with a `var_id`). Then color this accordingly.
 
-Currently a pile of hacks, probably broken in various ways. Use at your own risk, etc :)
+To try this out, you need the `main` (ie development) branch of JuliaSyntax.jl
+
+Currently a pile of hacks, probably broken in various ways. Use at your own
+risk, etc :)

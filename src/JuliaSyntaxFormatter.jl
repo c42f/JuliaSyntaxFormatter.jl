@@ -8,8 +8,8 @@ using Colors
 using JuliaSyntax: Kind, haschildren, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, is_operator, has_flags
 using JuliaLowering: SyntaxTree, provenance
 
-function _insert_kinds()
-    JuliaSyntax.insert_kinds!(JuliaSyntaxFormatter, 2, [
+function _register_kinds()
+    JuliaSyntax.register_kinds!(JuliaSyntaxFormatter, 2, [
         "BEGIN_FORMATTING_KINDS"
             "WS?"    # Zero or more whitespace characters
             "WS+"    # One or more whitespace characters
@@ -21,7 +21,7 @@ function _insert_kinds()
     ])
 end
 
-_insert_kinds()
+_register_kinds()
 
 struct FormatToken
     kind::Kind
@@ -325,7 +325,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
         while kind(p) != K"Identifier"
             p = provenance(p)[1]
         end
-        str = "var\"$(str)/$(p.name_val)\""
+        str = "$(str)/$(p.name_val)"
     end
     return str
 end
@@ -405,7 +405,7 @@ function formatsrc(ex::SyntaxTree;
 end
 
 function __init__()
-    _insert_kinds()
+    _register_kinds()
 end
 
 end
