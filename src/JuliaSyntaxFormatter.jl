@@ -5,7 +5,7 @@ using JuliaLowering
 using StyledStrings
 using Colors
 
-using JuliaSyntax: Kind, haschildren, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, is_operator, has_flags
+using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, is_operator, has_flags
 using JuliaLowering: SyntaxTree, provenance
 
 function _register_kinds()
@@ -125,7 +125,7 @@ end
 
 # Transform an expression tree into a stream of tokens and ranges
 function format_tree(ctx::FormatContext, ex)
-    if !haschildren(ex)
+    if is_leaf(ex)
         str = ctx.format_token_str(ex)
         style = ctx.format_style(ex)
         emit(ctx, FormatToken(kind(ex), str, false, style))
@@ -295,7 +295,7 @@ function format_indents(ctx::FormatContext)
 end
 
 function format_token_str_default(ex::SyntaxTree; include_var_id=false)
-    @assert !haschildren(ex)
+    @assert is_leaf(ex)
     # See also JuliaLowering._value_string
     k = kind(ex)
     str = k == K"Identifier" || k == K"MacroName" || is_operator(k) ? ex.name_val :
