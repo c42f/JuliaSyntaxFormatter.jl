@@ -308,6 +308,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
           k == K"Symbol"     ? ":$(ex.name_val)"     :
           k == K"globalref"  ? "$(ex.mod).$(ex.name_val)" :
           k == K"symbolic_label" ? "@label $(ex.name_val)" :
+          k == K"symbolic_goto" ? "@goto $(ex.name_val)" :
           k == K"slot"       ? "slot"   :
           repr(get(ex, :value, nothing))
     id = get(ex, :var_id, nothing)
