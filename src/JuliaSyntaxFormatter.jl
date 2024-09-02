@@ -175,13 +175,17 @@ function format_tree(ctx::FormatContext, ex)
             format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
             emit(ctx, K"WS??", K")")
         end
+    elseif k == K"curly"
+        emit(ctx, ex[1], K"WS??", K"{", K"WS??")
+        format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
+        emit(ctx, K"WS??", K"}")
     elseif k == K"doc"
         emit(ctx, ex[1], K"WS_NL", ex[2])
     elseif k == K"function"
         emit(ctx, K"function", K"WS+", ex[1])
         if numchildren(ex[2]) != 0
             emit(ctx, K"WS_NL")
-            format_join(ctx, children(ex[2]), K"WS_NL")
+            format_block_body(ctx, ex[2])
         end
         emit(ctx, K"WS_NL", K"end")
     elseif k == K"if"
@@ -198,7 +202,7 @@ function format_tree(ctx::FormatContext, ex)
             format_block_body(ctx, e)
         end
         emit(ctx, K"WS_NL", K"end")
-    elseif k == K"local" || k == K"global"
+    elseif k == K"local" || k == K"global" || k == K"const"
         emit(ctx, k, K"WS+")
         format_join(ctx, children(ex), K"WS??", K",", K"WS?")
     elseif k == K"let"
@@ -231,6 +235,10 @@ function format_tree(ctx::FormatContext, ex)
         else
             emit(ctx, K":", K"(", K"WS??", ex[1], K"WS??", K")")
         end
+    elseif k == K"ref"
+        emit(ctx, ex[1], K"WS??", K"[")
+        format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
+        emit(ctx, K"WS??", K"]")
     elseif k == K"return"
         emit(ctx, K"return", K"WS+", ex[1])
     elseif k == K"string"
