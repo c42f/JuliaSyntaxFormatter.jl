@@ -181,6 +181,17 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"WS??", K"}")
     elseif k == K"doc"
         emit(ctx, ex[1], K"WS_NL", ex[2])
+    elseif k == K"for"
+        emit(ctx, K"for")
+        iterspecs = ex[1]
+        emit(ctx, K"WS+")
+        format_join(ctx, children(iterspecs), K"WS??", K",", K"WS?")
+        stmts = ex[2]
+        if numchildren(stmts) != 0
+            emit(ctx, K"WS_NL")
+            format_block_body(ctx, ex[2])
+        end
+        emit(ctx, K"WS_NL", K"end")
     elseif k == K"function"
         emit(ctx, K"function", K"WS+", ex[1])
         if numchildren(ex[2]) != 0
@@ -227,6 +238,9 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"end")
     elseif k == K"macrocall"
         format_join(ctx, children(ex), K"WS+")
+    elseif k == K"parameters"
+        emit(ctx, K";", K"WS?")
+        format_join(ctx, children(ex), K",", K"WS?")
     elseif k == K"quote"
         if kind(ex[1]) == K"block"
             emit(ctx, K"quote", K"WS_NL")
@@ -259,7 +273,7 @@ function format_tree(ctx::FormatContext, ex)
     elseif k == K"tuple"
         emit(ctx, K"(", K"WS??")
         format_join(ctx, children(ex), K",", K"WS?")
-        if numchildren(ex) == 1
+        if numchildren(ex) == 1 && kind(ex[1]) != K"parameters"
             emit(ctx, K"WS??", K",")
         end
         emit(ctx, K"WS??", K")")
@@ -331,10 +345,13 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     end
     if k == K"slot" || k == K"BindingId"
         p = provenance(ex)[1]
-        while kind(p) != K"Identifier"
+        while p isa SyntaxTree
+            if kind(p) == K"Identifier"
+                str = "$(str)/$(p.name_val)"
+                break
+            end
             p = provenance(p)[1]
         end
-        str = "$(str)/$(p.name_val)"
     end
     return str
 end
