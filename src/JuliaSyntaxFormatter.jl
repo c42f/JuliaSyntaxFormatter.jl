@@ -125,13 +125,13 @@ end
 
 # Transform an expression tree into a stream of tokens and ranges
 function format_tree(ctx::FormatContext, ex)
+    k = kind(ex)
     if is_leaf(ex)
         str = ctx.format_token_str(ex)
         style = ctx.format_style(ex)
         emit(ctx, FormatToken(kind(ex), str, false, style))
         return
     end
-    k = kind(ex)
     start_node(ctx, ex)
     # Surface syntax
     if k == K"="
@@ -270,6 +270,17 @@ function format_tree(ctx::FormatContext, ex)
             end
         end
         emit(ctx, delim)
+    elseif k == K"struct"
+        if has_flags(ex, JuliaSyntax.MUTABLE_FLAG)
+            emit(ctx, K"mutable", K"WS+")
+        end
+        emit(ctx, K"struct", K"WS+", ex[1])
+        stmts = ex[2]
+        if numchildren(stmts) != 0
+            emit(ctx, K"WS_NL")
+            format_block_body(ctx, stmts)
+        end
+        emit(ctx, K"WS_NL", K"end")
     elseif k == K"tuple"
         emit(ctx, K"(", K"WS??")
         format_join(ctx, children(ex), K",", K"WS?")
@@ -332,7 +343,11 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
           k == K"symbolic_label" ? "@label $(ex.name_val)" :
           k == K"symbolic_goto" ? "@goto $(ex.name_val)" :
           k == K"slot"       ? "slot"   :
-          repr(get(ex, :value, nothing))
+          k == K"TOMBSTONE"  ? "🪦"     :
+          begin
+              val = get(ex, :value, nothing)
+              isnothing(val) ? "❓" : repr(val)
+          end
     id = get(ex, :var_id, nothing)
     if isnothing(id)
         id = get(ex, :id, nothing)
