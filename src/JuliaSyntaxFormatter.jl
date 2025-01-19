@@ -5,8 +5,42 @@ using JuliaLowering
 using StyledStrings
 using Colors
 
-using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, is_operator, has_flags
+using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, has_flags, Tokenize
 using JuliaLowering: SyntaxTree, provenance
+
+# Somewhat-hacky implementation of is_operator for strings ... this should be
+# in JuliaSyntax when it's further tested and cleaned up.
+function is_operator(str::AbstractString; allow_dot=false)
+    has_dot = false
+    i = 1
+    if isempty(str)
+        return false
+    elseif str[i] == '.'
+        has_dot = true
+        i = 2
+    end
+    c = str[i]
+    i = nextind(str, i)
+    if Tokenize.is_operator_start_char(c)
+        if i > lastindex(str)
+            # Fast path for (maybe dotted) single-character operators
+            return allow_dot || !has_dot || c == '.'
+        end
+    else
+        # Fast path for obviously-not-operator cases
+        return false
+    end
+    # Slow path. At this point we know the first token is longer than a
+    # character and might be an operator (eg, things like `++`, `+₁₁`) The
+    # rules are more complex here so defer to the full tokenizer for now.
+    toks = Tokenize.tokenize(str)
+    op_t = Tokenize.next_token(toks)
+    return JuliaSyntax.is_operator(op_t) && kind(Tokenize.next_token(toks)) == K"EndMarker"
+end
+
+function is_operator(x)
+    JuliaSyntax.is_operator(x)
+end
 
 function _register_kinds()
     JuliaSyntax.register_kinds!(JuliaSyntaxFormatter, 2, [
@@ -76,6 +110,9 @@ function emit(ctx::FormatContext, k::Kind)
     emit(ctx, FormatToken(k, str, true, style))
 end
 
+function emit(ctx::FormatContext, ::Nothing)
+end
+
 function emit(ctx::FormatContext, tok::FormatToken) 
     push!(ctx.tokens, tok)
 end
@@ -137,7 +174,11 @@ function format_tree(ctx::FormatContext, ex)
     if k == K"="
         emit(ctx, ex[1], K"WS?", K"=", K"WS?", ex[2])
     elseif k == K"."
-        emit(ctx, ex[1], K".", ex[2])
+        if numchildren(ex) == 1
+            emit(ctx, K"(", K".", ex[1], K")")
+        else
+            emit(ctx, ex[1], K".", ex[2])
+        end
     elseif k == K"::"
         if numchildren(ex) == 1
             emit(ctx, K"::", K"WS??", ex[1])
@@ -163,15 +204,25 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"begin", K"WS_NL")
         format_join(ctx, children(ex), K"WS_NL")
         emit(ctx, K"WS_NL", K"end")
-    elseif k == K"call"
+    elseif k == K"call" || k == K"dotcall"
+        dottok = k == K"dotcall" ? K"." : nothing
         if is_infix_op_call(ex)
             # TODO: Precedence - add parens
-            emit(ctx, ex[1], K"WS?", ex[2], K"WS?", ex[3])
+            emit(ctx, ex[1], K"WS?", dottok, ex[2], K"WS?", ex[3])
         elseif is_postfix_op_call(ex)
             # TODO: Precedence - make parens optional
-            emit(K"(", ex[1], K")", ex[2])
+            emit(K"(", ex[1], K")", dottok, ex[2])
         else
-            emit(ctx, ex[1], K"(", K"WS??")
+            if isnothing(dottok)
+                emit(ctx, ex[1])
+            else
+                if is_operator(ex[1]) || (kind(ex[1]) == K"Identifier" && is_operator(ex[1].name_val))
+                    emit(ctx, K"(", dottok, ex[1], K")")
+                else
+                    emit(ctx, ex[1], dottok)
+                end
+            end
+            emit(ctx, K"(", K"WS??")
             format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
             emit(ctx, K"WS??", K")")
         end
