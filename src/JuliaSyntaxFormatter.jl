@@ -5,7 +5,7 @@ using JuliaLowering
 using StyledStrings
 using Colors
 
-using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, has_flags, Tokenize
+using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, is_dotted, sourcetext, has_flags, Tokenize
 using JuliaLowering: SyntaxTree, provenance
 
 # Somewhat-hacky implementation of is_operator for strings ... this should be
@@ -198,6 +198,10 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"$", K"(", K"WS??")
         format_join(ctx, children(ex), K"WS??", K",", K"WS?")
         emit(ctx, K"WS??", K")")
+    elseif k == K"op="
+        @assert numchildren(ex) == 3
+        dottok = is_dotted(ex) ? K"." : nothing
+        emit(ctx, ex[1], K"WS?", dottok, ex[2], K"=", K"WS?", ex[3])
     elseif is_operator(k)
         format_join(ctx, children(ex), K"WS?", k, K"WS?")
     elseif k == K"block"
@@ -264,6 +268,9 @@ function format_tree(ctx::FormatContext, ex)
             format_block_body(ctx, e)
         end
         emit(ctx, K"WS_NL", K"end")
+    elseif k == K"juxtapose"
+        @assert numchildren(ex) == 2
+        emit(ctx, ex[1], ex[2])
     elseif k == K"local" || k == K"global" || k == K"const"
         emit(ctx, k, K"WS+")
         format_join(ctx, children(ex), K"WS??", K",", K"WS?")
