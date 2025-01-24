@@ -160,6 +160,11 @@ function format_block_body(ctx::FormatContext, ex)
     end
 end
 
+function format_generator_body(ctx::FormatContext, ex)
+    emit(ctx, ex[1], K"WS+", K"for", K"WS+")
+    format_join(ctx, ex[2:end], K"WS+", K"for", K"WS+")
+end
+
 # Transform an expression tree into a stream of tokens and ranges
 function format_tree(ctx::FormatContext, ex)
     k = kind(ex)
@@ -230,12 +235,18 @@ function format_tree(ctx::FormatContext, ex)
             format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
             emit(ctx, K"WS??", K")")
         end
+    elseif k == K"comprehension"
+        emit(ctx, K"[")
+        format_generator_body(ctx, ex[1])
+        emit(ctx, K"]")
     elseif k == K"curly"
         emit(ctx, ex[1], K"WS??", K"{", K"WS??")
         format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
         emit(ctx, K"WS??", K"}")
     elseif k == K"doc"
         emit(ctx, ex[1], K"WS_NL", ex[2])
+    elseif k == K"filter"
+        emit(ctx, ex[1], K"WS?", K"if", K"WS?", ex[2])
     elseif k == K"for"
         emit(ctx, K"for")
         iterspecs = ex[1]
@@ -254,6 +265,10 @@ function format_tree(ctx::FormatContext, ex)
             format_block_body(ctx, ex[2])
         end
         emit(ctx, K"WS_NL", K"end")
+    elseif k == K"generator"
+        emit(ctx, K"(")
+        format_generator_body(ctx, ex)
+        emit(ctx, K")")
     elseif k == K"if"
         emit(ctx, K"if", K"WS+", ex[1], K"WS_NL")
         format_block_body(ctx, ex[2])
@@ -268,6 +283,8 @@ function format_tree(ctx::FormatContext, ex)
             format_block_body(ctx, e)
         end
         emit(ctx, K"WS_NL", K"end")
+    elseif k == K"iteration"
+        format_join(ctx, children(ex), K"WS??", K",", K"WS?")
     elseif k == K"juxtapose"
         @assert numchildren(ex) == 2
         emit(ctx, ex[1], ex[2])
@@ -346,6 +363,10 @@ function format_tree(ctx::FormatContext, ex)
             emit(ctx, K"WS??", K",")
         end
         emit(ctx, K"WS??", K")")
+    elseif k == K"typed_comprehension"
+        emit(ctx, ex[1], K"[")
+        format_generator_body(ctx, ex[2])
+        emit(ctx, K"]")
     # Lowering stuff
     else
         style = ctx.node_stack[end][2]
