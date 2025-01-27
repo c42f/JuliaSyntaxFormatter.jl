@@ -423,6 +423,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
           k == K"symbolic_goto" ? "@goto $(ex.name_val)" :
           k == K"slot"       ? "slot"   :
           k == K"TOMBSTONE"  ? "🪦"     :
+          k == K"SourceLocation" ? "SourceLocation:$(JuliaSyntax.filename(ex)):$(join(JuliaSyntax.source_location(ex), ':'))" :
           begin
               val = get(ex, :value, nothing)
               isnothing(val) ? "❓" : repr(val)
