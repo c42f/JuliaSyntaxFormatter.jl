@@ -140,6 +140,22 @@ function end_node(ctx::FormatContext)
     nothing
 end
 
+function format_join_arglist(ctx::FormatContext, exs)
+    first = true
+    for ex in exs
+        if kind(ex) == K"parameters"
+            emit(ctx, K"WS??", K";", K"WS?")
+            format_join(ctx, children(ex), K"WS??", K",", K"WS?")
+        else
+            if !first
+                emit(ctx, K"WS??", K",", K"WS?")
+            end
+            format_tree(ctx, ex)
+        end
+        first = false
+    end
+end
+
 function format_join(ctx::FormatContext, exs, sep_kinds...)
     first = true
     for ex in exs
@@ -232,7 +248,7 @@ function format_tree(ctx::FormatContext, ex)
                 end
             end
             emit(ctx, K"(", K"WS??")
-            format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
+            format_join_arglist(ctx, ex[2:end])
             emit(ctx, K"WS??", K")")
         end
     elseif k == K"comprehension"
@@ -241,7 +257,7 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"]")
     elseif k == K"curly"
         emit(ctx, ex[1], K"WS??", K"{", K"WS??")
-        format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
+        format_join_arglist(ctx, ex[2:end])
         emit(ctx, K"WS??", K"}")
     elseif k == K"doc"
         emit(ctx, ex[1], K"WS_NL", ex[2])
@@ -260,7 +276,7 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"WS_NL", K"end")
     elseif k == K"function"
         emit(ctx, K"function", K"WS+", ex[1])
-        if numchildren(ex[2]) != 0
+        if numchildren(ex) > 1 && numchildren(ex[2]) != 0
             emit(ctx, K"WS_NL")
             format_block_body(ctx, ex[2])
         end
@@ -313,9 +329,6 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"end")
     elseif k == K"macrocall"
         format_join(ctx, children(ex), K"WS+")
-    elseif k == K"parameters"
-        emit(ctx, K";", K"WS?")
-        format_join(ctx, children(ex), K",", K"WS?")
     elseif k == K"quote"
         if kind(ex[1]) == K"block"
             emit(ctx, K"quote", K"WS_NL")
@@ -326,7 +339,7 @@ function format_tree(ctx::FormatContext, ex)
         end
     elseif k == K"ref"
         emit(ctx, ex[1], K"WS??", K"[")
-        format_join(ctx, ex[2:end], K"WS??", K",", K"WS?")
+        format_join_arglist(ctx, ex[2:end])
         emit(ctx, K"WS??", K"]")
     elseif k == K"return"
         emit(ctx, K"return", K"WS+", ex[1])
@@ -358,7 +371,7 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"WS_NL", K"end")
     elseif k == K"tuple"
         emit(ctx, K"(", K"WS??")
-        format_join(ctx, children(ex), K",", K"WS?")
+        format_join_arglist(ctx, children(ex))
         if numchildren(ex) == 1 && kind(ex[1]) != K"parameters"
             emit(ctx, K"WS??", K",")
         end
