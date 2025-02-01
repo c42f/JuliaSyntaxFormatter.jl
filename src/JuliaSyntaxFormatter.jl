@@ -342,7 +342,10 @@ function format_tree(ctx::FormatContext, ex)
         format_join_arglist(ctx, ex[2:end])
         emit(ctx, K"WS??", K"]")
     elseif k == K"return"
-        emit(ctx, K"return", K"WS+", ex[1])
+        emit(ctx, K"return")
+        if numchildren(ex) > 0
+            emit(ctx, K"WS+", ex[1])
+        end
     elseif k == K"string"
         delim = has_flags(ex, JuliaSyntax.TRIPLE_STRING_FLAG) ? K"\"\"\"" : K"\""
         emit(ctx, delim)
