@@ -5,7 +5,7 @@ using JuliaLowering
 using StyledStrings
 using Colors
 
-using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, is_dotted, sourcetext, has_flags, Tokenize
+using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, has_flags, Tokenize
 using JuliaLowering: SyntaxTree, provenance
 
 # Somewhat-hacky implementation of is_operator for strings ... this should be
@@ -192,8 +192,8 @@ function format_tree(ctx::FormatContext, ex)
     end
     start_node(ctx, ex)
     # Surface syntax
-    if k == K"="
-        emit(ctx, ex[1], K"WS?", K"=", K"WS?", ex[2])
+    if k == K"=" || k == K".="
+        emit(ctx, ex[1], K"WS?", k, K"WS?", ex[2])
     elseif k == K"."
         if numchildren(ex) == 1
             emit(ctx, K"(", K".", ex[1], K")")
@@ -221,8 +221,10 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"WS??", K")")
     elseif k == K"op="
         @assert numchildren(ex) == 3
-        dottok = is_dotted(ex) ? K"." : nothing
-        emit(ctx, ex[1], K"WS?", dottok, ex[2], K"=", K"WS?", ex[3])
+        emit(ctx, ex[1], K"WS?", ex[2], K"=", K"WS?", ex[3])
+    elseif k == K".op="
+        @assert numchildren(ex) == 3
+        emit(ctx, ex[1], K"WS?", K".", ex[2], K"=", K"WS?", ex[3])
     elseif is_operator(k)
         format_join(ctx, children(ex), K"WS?", k, K"WS?")
     elseif k == K"block"
@@ -509,7 +511,7 @@ function formatsrc(ex::SyntaxTree;
     styled_keys = [
         let
             s = Base.AnnotatedString(string(style_key))
-            Base.annotate!(s, firstindex(s):lastindex(s), :face=>style)
+            Base.annotate!(s, firstindex(s):lastindex(s), :face, style)
         end
         for (style_key, style) in style_map
         if !isnothing(style_key)
@@ -532,7 +534,7 @@ function formatsrc(ex::SyntaxTree;
     for tok in ctx.tokens
         n = lastindex(tok.text)
         if !isnothing(tok.style)
-            Base.annotate!(text, idx:idx-1+n, :face=>style_map[tok.style])
+            Base.annotate!(text, idx:idx-1+n, :face, style_map[tok.style])
         end
         idx += sizeof(tok.text)
     end
