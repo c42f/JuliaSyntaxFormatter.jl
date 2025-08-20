@@ -5,7 +5,7 @@ using JuliaSyntax, JuliaLowering
 @testset "JuliaSyntaxFormatter.jl" begin
 
 # Indentation is represented here as `~~` for ease of readability
-tests = [
+stmt_tests = [
     # block
     "begin end" => "begin\nend"
     "begin\nx\nend" => "begin\n~~x\nend"
@@ -31,6 +31,12 @@ tests = [
     "while cond\nend" => "while cond\nend"
     "while cond\na\nend" => "while cond\n~~a\nend"
     "while cond\na\nb\nend" => "while cond\n~~a\n~~b\nend"
+    # let
+    "let\nend" => "let\nend"
+    "let x=1\nend" => "let x = 1\nend"
+    "let x=1,y=2\nend" => "let x = 1, y = 2\nend"
+    "let\nbody\nend" => "let\n~~body\nend"
+    "let x=1\nbody\nend" => "let x = 1\n~~body\nend"
     # struct
     "struct X\nend" => "struct X\nend"
     "struct X\na\nend" => "struct X\n~~a\nend"
@@ -58,10 +64,26 @@ tests = [
     # braces
     "{x,}" => "{x}"
     "{x, y}" => "{x, y}"
+    # quote
+    "quote\nend" => "quote\nend"
+    "quote\nbody\nend" => "quote\n~~body\nend"
+    ":(x+y)" => ":(x + y)"
+    ":(x)" => ":(x)"
 ]
 
-@testset "$(repr(input))" for (input,ref_output) in tests
+@testset "$(repr(input))" for (input,ref_output) in stmt_tests
     ast = parsestmt(JuliaLowering.SyntaxTree, input)
+    @test JuliaSyntaxFormatter.formatsrc(ast, indent_str="~~") == ref_output
+end
+
+# Indentation is represented here as `~~` for ease of readability
+toplevel_tests = [
+    # doc
+    "\"docstr\"\nthing_to_doc" => "---toplevel---\n~~\"docstr\"\n~~thing_to_doc\nend"
+]
+
+@testset "$(repr(input))" for (input,ref_output) in toplevel_tests
+    ast = parseall(JuliaLowering.SyntaxTree, input)
     @test JuliaSyntaxFormatter.formatsrc(ast, indent_str="~~") == ref_output
 end
 

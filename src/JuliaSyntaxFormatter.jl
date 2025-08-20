@@ -281,7 +281,7 @@ function format_tree(ctx::FormatContext, ex)
         format_join_arglist(ctx, ex[2:end])
         emit(ctx, K"WS??", K"}")
     elseif k == K"doc"
-        emit(ctx, ex[1], K"WS_NL", ex[2])
+        emit(ctx, ex[1], K"WS_NL-", ex[2])
     elseif k == K"filter"
         emit(ctx, ex[1], K"WS?", K"if", K"WS?", ex[2])
     elseif k == K"for"
@@ -291,7 +291,11 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"end")
     elseif k == K"function"
         emit(ctx, K"function", K"WS+", ex[1])
-        format_multiline_body(ctx, ex[2])
+        if numchildren(ex) >= 2
+            format_multiline_body(ctx, ex[2])
+        else
+            emit(ctx, K"WS_NL-")
+        end
         emit(ctx, K"end")
     elseif k == K"generator"
         emit(ctx, K"(")
@@ -325,27 +329,16 @@ function format_tree(ctx::FormatContext, ex)
         if numchildren(bindings) != 0
             emit(ctx, K"WS+")
             format_join(ctx, children(bindings), K"WS??", K",", K"WS?")
-            emit(ctx, K"WS_NL")
         end
-        stmts = ex[2]
-        if numchildren(stmts) != 0
-            if numchildren(bindings) == 0
-                emit(ctx, K"WS_NL")
-            end
-            format_join(ctx, children(stmts), K"WS_NL")
-            emit(ctx, K"WS_NL")
-        end
-        if numchildren(bindings) == 0 && numchildren(stmts) == 0
-            emit(ctx, K"WS?", K";", K"WS?")
-        end
+        format_multiline_body(ctx, ex[2])
         emit(ctx, K"end")
     elseif k == K"macrocall"
         format_join(ctx, children(ex), K"WS+")
     elseif k == K"quote"
         if kind(ex[1]) == K"block"
-            emit(ctx, K"quote", K"WS_NL")
-            format_join(ctx, children(ex[1]), K"WS_NL")
-            emit(ctx, K"WS_NL", K"end")
+            emit(ctx, K"quote")
+            format_multiline_body(ctx, ex[1])
+            emit(ctx, K"end")
         else
             emit(ctx, K":", K"(", K"WS??", ex[1], K"WS??", K")")
         end
@@ -395,9 +388,9 @@ function format_tree(ctx::FormatContext, ex)
     else
         # Unknown kinds
         style = ctx.node_stack[end][2]
-        emit(ctx, FormatToken(kind(ex), string("---",kind(ex),"---"), true, style), K"WS_NL")
-        format_join(ctx, children(ex), K"WS_NL")
-        emit(ctx, K"WS_NL", K"end")
+        emit(ctx, FormatToken(kind(ex), string("---",kind(ex),"---"), true, style))
+        format_multiline(ctx, children(ex))
+        emit(ctx, K"end")
     end
     end_node(ctx)
     ctx
