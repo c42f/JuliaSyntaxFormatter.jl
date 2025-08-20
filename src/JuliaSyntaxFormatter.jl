@@ -5,7 +5,7 @@ using JuliaLowering
 using StyledStrings
 using Colors
 
-using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, has_flags, Tokenize
+using JuliaSyntax: Kind, is_leaf, numchildren, children, is_infix_op_call, is_postfix_op_call, sourcetext, has_flags, Tokenize, @KSet_str
 using JuliaLowering: SyntaxTree, provenance
 
 # Somewhat-hacky implementation of is_operator for strings ... this should be
@@ -168,12 +168,29 @@ function format_join(ctx::FormatContext, exs, sep_kinds...)
     end
 end
 
-function format_block_body(ctx::FormatContext, ex)
-    if kind(ex) == K"block"
-        format_join(ctx, children(ex), K"WS_NL")
-    else
-        emit(ctx, ex)
+function format_multiline(ctx::FormatContext, exs)
+    if !isempty(exs)
+        emit(ctx, K"WS_NL")
+        format_join(ctx, exs, K"WS_NL")
     end
+    emit(ctx, K"WS_NL-")
+end
+
+function format_multiline_body(ctx::FormatContext, ex)
+    if kind(ex) == K"block"
+        format_multiline(ctx, children(ex))
+    else
+        format_multiline(ctx, (ex,))
+    end
+end
+
+function format_bracketed_list(ctx::FormatContext, exs, opener, closer)
+    emit(ctx, opener, K"WS??")
+    format_join_arglist(ctx, exs)
+    if opener == K"(" && length(exs) == 1 && kind(exs[1]) != K"parameters"
+        emit(ctx, K"WS??", K",")
+    end
+    emit(ctx, K"WS??", closer)
 end
 
 function format_generator_body(ctx::FormatContext, ex)
@@ -228,9 +245,11 @@ function format_tree(ctx::FormatContext, ex)
     elseif is_operator(k)
         format_join(ctx, children(ex), K"WS?", k, K"WS?")
     elseif k == K"block"
-        emit(ctx, K"begin", K"WS_NL")
-        format_join(ctx, children(ex), K"WS_NL")
-        emit(ctx, K"WS_NL", K"end")
+        emit(ctx, K"begin")
+        format_multiline(ctx, children(ex))
+        emit(ctx, K"end")
+    elseif k == K"braces"
+        format_bracketed_list(ctx, children(ex), K"{", K"}")
     elseif k == K"call" || k == K"dotcall"
         dottok = k == K"dotcall" ? K"." : nothing
         if is_infix_op_call(ex)
@@ -266,41 +285,32 @@ function format_tree(ctx::FormatContext, ex)
     elseif k == K"filter"
         emit(ctx, ex[1], K"WS?", K"if", K"WS?", ex[2])
     elseif k == K"for"
-        emit(ctx, K"for")
-        iterspecs = ex[1]
-        emit(ctx, K"WS+")
-        format_join(ctx, children(iterspecs), K"WS??", K",", K"WS?")
-        stmts = ex[2]
-        if numchildren(stmts) != 0
-            emit(ctx, K"WS_NL")
-            format_block_body(ctx, ex[2])
-        end
-        emit(ctx, K"WS_NL", K"end")
+        emit(ctx, K"for", K"WS+")
+        format_join(ctx, children(ex[1]), K"WS??", K",", K"WS?")
+        format_multiline_body(ctx, ex[2])
+        emit(ctx, K"end")
     elseif k == K"function"
         emit(ctx, K"function", K"WS+", ex[1])
-        if numchildren(ex) > 1 && numchildren(ex[2]) != 0
-            emit(ctx, K"WS_NL")
-            format_block_body(ctx, ex[2])
-        end
-        emit(ctx, K"WS_NL", K"end")
+        format_multiline_body(ctx, ex[2])
+        emit(ctx, K"end")
     elseif k == K"generator"
         emit(ctx, K"(")
         format_generator_body(ctx, ex)
         emit(ctx, K")")
     elseif k == K"if"
-        emit(ctx, K"if", K"WS+", ex[1], K"WS_NL")
-        format_block_body(ctx, ex[2])
+        emit(ctx, K"if", K"WS+", ex[1])
+        format_multiline_body(ctx, ex[2])
         e = numchildren(ex) > 2 ? ex[3] : nothing
         while !isnothing(e) && kind(e) == K"elseif"
-            emit(ctx, K"WS_NL-", K"elseif", K"WS+", e[1], K"WS_NL")
-            format_block_body(ctx, e[2])
+            emit(ctx, K"elseif", K"WS+", e[1])
+            format_multiline_body(ctx, e[2])
             e = numchildren(e) > 2 ? e[3] : nothing
         end
         if !isnothing(e)
-            emit(ctx, K"WS_NL-", K"else", K"WS_NL")
-            format_block_body(ctx, e)
+            emit(ctx, K"else")
+            format_multiline_body(ctx, e)
         end
-        emit(ctx, K"WS_NL", K"end")
+        emit(ctx, K"end")
     elseif k == K"iteration"
         format_join(ctx, children(ex), K"WS??", K",", K"WS?")
     elseif k == K"juxtapose"
@@ -368,25 +378,22 @@ function format_tree(ctx::FormatContext, ex)
             emit(ctx, K"mutable", K"WS+")
         end
         emit(ctx, K"struct", K"WS+", ex[1])
-        stmts = ex[2]
-        if numchildren(stmts) != 0
-            emit(ctx, K"WS_NL")
-            format_block_body(ctx, stmts)
-        end
-        emit(ctx, K"WS_NL", K"end")
+        format_multiline_body(ctx, ex[2])
+        emit(ctx, K"end")
     elseif k == K"tuple"
-        emit(ctx, K"(", K"WS??")
-        format_join_arglist(ctx, children(ex))
-        if numchildren(ex) == 1 && kind(ex[1]) != K"parameters"
-            emit(ctx, K"WS??", K",")
-        end
-        emit(ctx, K"WS??", K")")
+        format_bracketed_list(ctx, children(ex), K"(", K")")
     elseif k == K"typed_comprehension"
         emit(ctx, ex[1], K"[")
         format_generator_body(ctx, ex[2])
         emit(ctx, K"]")
-    # Lowering stuff
+    elseif k == K"vect"
+        format_bracketed_list(ctx, children(ex), K"[", K"]")
+    elseif k == K"while"
+        emit(ctx, K"while", K"WS+", ex[1])
+        format_multiline_body(ctx, ex[2])
+        emit(ctx, K"end")
     else
+        # Unknown kinds
         style = ctx.node_stack[end][2]
         emit(ctx, FormatToken(kind(ex), string("---",kind(ex),"---"), true, style), K"WS_NL")
         format_join(ctx, children(ex), K"WS_NL")
@@ -396,30 +403,34 @@ function format_tree(ctx::FormatContext, ex)
     ctx
 end
 
+is_newline(k) = k in KSet"WS_NL WS_NL-"
+
 """
 Modify each WS_NL to include trailing indentation
 """
-function format_indents(ctx::FormatContext)
-    line_number = 1 .+ cumsum(t.kind==K"WS_NL" for t in ctx.tokens)
+function format_indents(ctx::FormatContext, indent_str)
+    line_number = 1 .+ cumsum(is_newline(t.kind) for t in ctx.tokens)
 
+    # Crude algorithm: For each node range (start_node/end_node) which contain
+    # an internal WS_NL token, all newlines inside have their indentation
+    # incremented.
     indent = zeros(Int, length(ctx.tokens))
     for i = 1:length(ctx.ranges)
         r = ctx.ranges[i]
         has_newline = line_number[r.range[end]] > line_number[r.range[1]]
         if has_newline
             j = r.range[end]
-            while ctx.tokens[j].kind != K"WS_NL"
+            while !is_newline(ctx.tokens[j].kind)
                 j -= 1
             end
-            j -= 1
             indent[r.range[1]:j] .+= 1
         end
     end
 
     for (i,tok) in enumerate(ctx.tokens)
         if tok.kind == K"WS_NL" || tok.kind == K"WS_NL-" 
-            ind = indent[i] - (tok.kind == K"WS_NL-")
-            ctx.tokens[i] = FormatToken(tok.kind, "\n"*"    "^ind, true, tok.style)
+            n_indent = indent[i] - (tok.kind == K"WS_NL-")
+            ctx.tokens[i] = FormatToken(tok.kind, "\n"*indent_str^n_indent, true, tok.style)
         end
     end
 end
@@ -479,31 +490,7 @@ function distinguishable_faces(n)
     [StyledStrings.Face(foreground=_convert_col(c)) for c in cols]
 end
 
-"""
-    formatsrc(ex; include_var_id, format_token_str, color_by)
-
-Format syntax tree `ex` as Julia source code. `include_var_id` includes the
-`var_id` attribute in the names of identifiers, when present.
-
-`format_token_str` is a function which extracts the
-string representation of a leaf of the tree.
-
-`color_by` extracts the "style" of a node which can be any value; unique style
-values will be formatted as random but distinguishable colors when printing. If
-`color_by` is a Symbol, that property of the node will be used; if it's a
-function `color_by(ex)` will be called to extract the style of `ex`.
-"""
-function formatsrc(ex::SyntaxTree;
-                   include_var_id=false,
-                   format_token_str=(ex)->format_token_str_default(ex; include_var_id),
-                   color_by=nothing)
-    format_style = isnothing(color_by) ? e->nothing                   :
-                   color_by isa Symbol ? e->get(e, color_by, nothing) :
-                   color_by
-    ctx = FormatContext(format_token_str, format_style)
-    JuliaSyntaxFormatter.format_tree(ctx, ex)
-    JuliaSyntaxFormatter.format_indents(ctx)
-
+function apply_token_styles(ctx, text)
     styles = unique(tok.style for tok in ctx.tokens)
     style_map = Dict(zip(styles, distinguishable_faces(length(styles))))
 
@@ -530,7 +517,7 @@ function formatsrc(ex::SyntaxTree;
     end
 
     idx = 1
-    text = Base.AnnotatedString(sourcetext(ctx))
+    text = Base.AnnotatedString(text)
     for tok in ctx.tokens
         n = lastindex(tok.text)
         if !isnothing(tok.style)
@@ -541,6 +528,35 @@ function formatsrc(ex::SyntaxTree;
     println(io, text)
     seek(io, 0)
     read(io, Base.AnnotatedString)
+end
+
+"""
+    formatsrc(ex; include_var_id, format_token_str, color_by)
+
+Format syntax tree `ex` as Julia source code. `include_var_id` includes the
+`var_id` attribute in the names of identifiers, when present.
+
+`format_token_str` is a function which extracts the
+string representation of a leaf of the tree.
+
+`color_by` extracts the "style" of a node which can be any value; unique style
+values will be formatted as random but distinguishable colors when printing. If
+`color_by` is a Symbol, that property of the node will be used; if it's a
+function `color_by(ex)` will be called to extract the style of `ex`.
+"""
+function formatsrc(ex::SyntaxTree;
+                   include_var_id=false,
+                   format_token_str=(ex)->format_token_str_default(ex; include_var_id),
+                   color_by=nothing, indent_str="    ")
+    format_style = isnothing(color_by) ? e->nothing                   :
+                   color_by isa Symbol ? e->get(e, color_by, nothing) :
+                   color_by
+    ctx = FormatContext(format_token_str, format_style)
+    format_tree(ctx, ex)
+    format_indents(ctx, indent_str)
+
+    text = sourcetext(ctx)
+    return isnothing(color_by) ? text : apply_token_styles(ctx, text)
 end
 
 function __init__()

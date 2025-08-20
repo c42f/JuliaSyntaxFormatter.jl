@@ -1,6 +1,68 @@
 using JuliaSyntaxFormatter
 using Test
+using JuliaSyntax, JuliaLowering
 
 @testset "JuliaSyntaxFormatter.jl" begin
-    # Write your tests here.
+
+# Indentation is represented here as `~~` for ease of readability
+tests = [
+    # block
+    "begin end" => "begin\nend"
+    "begin\nx\nend" => "begin\n~~x\nend"
+    "begin\nx\ny\nend" => "begin\n~~x\n~~y\nend"
+    # call
+    "f()" => "f()"
+    "f(x)" => "f(x)"
+    "f(x,y)" => "f(x, y)"
+    "f()()" => "f()()"
+    "a + b" => "a + b"
+    "a + b*c" => "a + b * c"
+    # FIXME: operator precedence
+    # "(a + b) * c" => "a + b * c"
+    # for
+    "for x in xs\nend" => "for x in xs\nend"
+    "for x in xs\na\nend" => "for x in xs\n~~a\nend"
+    "for x in xs\na\nb\nend" => "for x in xs\n~~a\n~~b\nend"
+    "for x in xs, y in ys\na\nend" => "for x in xs, y in ys\n~~a\nend"
+    # function
+    "function f() end" => "function f()\nend"
+    "function f()\nx\nend" => "function f()\n~~x\nend"
+    # while
+    "while cond\nend" => "while cond\nend"
+    "while cond\na\nend" => "while cond\n~~a\nend"
+    "while cond\na\nb\nend" => "while cond\n~~a\n~~b\nend"
+    # struct
+    "struct X\nend" => "struct X\nend"
+    "struct X\na\nend" => "struct X\n~~a\nend"
+    "struct X\na\nb\nend" => "struct X\n~~a\n~~b\nend"
+    # if else
+    "if cond\nend" => "if cond\nend"
+    "if cond\nx\nend" => "if cond\n~~x\nend"
+    "if cond\nx\nelseif cond2\nend" => "if cond\n~~x\nelseif cond2\nend"
+    "if cond\nx\nelseif cond2\ny\nend" => "if cond\n~~x\nelseif cond2\n~~y\nend"
+    "if cond\nx\nelseif cond2\ny\nelse\nend" => "if cond\n~~x\nelseif cond2\n~~y\nelse\nend"
+    "if cond\nx\nelseif cond2\ny\nelse\nz\nend" => "if cond\n~~x\nelseif cond2\n~~y\nelse\n~~z\nend"
+    # tuple
+    "()" => "()"
+    "(x,)" => "(x,)"
+    "(x, y)" => "(x, y)"
+    "(; x)" => "(; x)"
+    "(x,y; a)" => "(x, y; a)"
+    "(x,y; a,b)" => "(x, y; a, b)"
+    "(x,y; a,b; s)" => "(x, y; a, b; s)"
+    # ref
+    "a[i, j]" => "a[i, j]"
+    # vect
+    "[x,]" => "[x]"
+    "[x, y]" => "[x, y]"
+    # braces
+    "{x,}" => "{x}"
+    "{x, y}" => "{x, y}"
+]
+
+@testset "$(repr(input))" for (input,ref_output) in tests
+    ast = parsestmt(JuliaLowering.SyntaxTree, input)
+    @test JuliaSyntaxFormatter.formatsrc(ast, indent_str="~~") == ref_output
+end
+
 end
