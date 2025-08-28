@@ -253,11 +253,26 @@ function format_tree(ctx::FormatContext, ex)
     elseif k == K"call" || k == K"dotcall"
         dottok = k == K"dotcall" ? K"." : nothing
         if is_infix_op_call(ex)
-            # TODO: Precedence - add parens
-            emit(ctx, ex[1], K"WS?", dottok, ex[2], K"WS?", ex[3])
+            op = ex[2]
+            if !(kind(op) == K"Identifier" && is_operator(op.name_val))
+                error("Invalid infix operator name $op")
+            end
+            # TODO: Precedence: make parens optional
+            emit(ctx, K"(")
+            if numchildren(ex) > 3
+                args = copy(children(ex))
+                deleteat!(args, 2)
+                if !(op.name_val in ("+", "++", "*"))
+                    error("Invalid nary infix operator name $op")
+                end
+                format_join(ctx, args, K"WS?", op, K"WS?")
+            else
+                emit(ctx, ex[1], K"WS?", dottok, ex[2], K"WS?", ex[3])
+            end
+            emit(ctx, K")")
         elseif is_postfix_op_call(ex)
             # TODO: Precedence - make parens optional
-            emit(K"(", ex[1], K")", dottok, ex[2])
+            emit(ctx, K"(", ex[1], K")", dottok, ex[2])
         else
             if isnothing(dottok)
                 emit(ctx, ex[1])

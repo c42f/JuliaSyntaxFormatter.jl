@@ -15,10 +15,18 @@ stmt_tests = [
     "f(x)" => "f(x)"
     "f(x,y)" => "f(x, y)"
     "f()()" => "f()()"
-    "a + b" => "a + b"
-    "a + b*c" => "a + b * c"
-    # FIXME: operator precedence
-    # "(a + b) * c" => "a + b * c"
+    # infix call
+    "a + b" => "(a + b)"
+    "a + b*c" => "(a + (b * c))"
+    "(a + b)*c" => "((a + b) * c)"
+    "a + b + c" => "(a + b + c)"
+    "a ++ b ++ c" => "(a ++ b ++ c)"
+    "a * b * c" => "(a * b * c)"
+    "a / b / c" => "((a / b) / c)"
+    "a - b - c" => "((a - b) - c)"
+    # postfix call
+    "a'" => "(a)'"
+    "(a+b)'" => "((a + b))'"
     # for
     "for x in xs\nend" => "for x in xs\nend"
     "for x in xs\na\nend" => "for x in xs\n~~a\nend"
@@ -67,7 +75,7 @@ stmt_tests = [
     # quote
     "quote\nend" => "quote\nend"
     "quote\nbody\nend" => "quote\n~~body\nend"
-    ":(x+y)" => ":(x + y)"
+    ":(x+y)" => ":((x + y))"
     ":(x)" => ":(x)"
 ]
 
