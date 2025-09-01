@@ -250,6 +250,16 @@ function format_string(ctx::FormatContext, ex, raw_string)
     emit(ctx, delim)
 end
 
+function format_do(ctx::FormatContext, ex)
+    @assert kind(ex) == K"do"
+    @assert numchildren(ex) == 2
+    emit(ctx, K"WS+", K"do", K"WS+")
+    @assert kind(ex[1]) == K"tuple"
+    format_join(ctx, children(ex[1]), K"WS??", K",", K"WS?")
+    format_multiline_body(ctx, ex[2])
+    emit(ctx, K"end")
+end
+
 # Transform an expression tree into a stream of tokens and ranges
 function format_tree(ctx::FormatContext, ex)
     k = kind(ex)
@@ -336,8 +346,13 @@ function format_tree(ctx::FormatContext, ex)
                 end
             end
             emit(ctx, K"(", K"WS??")
-            format_join_arglist(ctx, ex[2:end])
+            lastarg = ex[end]
+            has_do = kind(lastarg) == K"do" 
+            format_join_arglist(ctx, ex[2:end-has_do])
             emit(ctx, K"WS??", K")")
+            if has_do
+                format_do(ctx, lastarg)
+            end
         end
     elseif k == K"comprehension"
         emit(ctx, K"[")
@@ -401,6 +416,7 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"end")
     elseif k == K"macrocall"
         if kind(ex[1]) == K"StringMacroName"
+            @assert numchildren(ex) in (2,3)
             namestr = ex[1].name_val # Strip out @ and _str parts of name
             emit(ctx, ex[1], namestr[2:end-4])
             format_string(ctx, ex[2], true)
@@ -414,7 +430,20 @@ function format_tree(ctx::FormatContext, ex)
                 end
             end
         else
-            format_join(ctx, children(ex), K"WS+")
+            has_do = numchildren(ex) >= 2 && kind(ex[end]) == K"do"
+            needs_parens = has_do
+            if needs_parens
+                format_tree(ctx, ex[1])
+                emit(ctx, K"(", K"WS??")
+                lastarg = ex[end]
+                format_join_arglist(ctx, ex[2:end-has_do])
+                emit(ctx, K"WS??", K")")
+                if has_do
+                    format_do(ctx, lastarg)
+                end
+            else
+                format_join(ctx, children(ex), K"WS+")
+            end
         end
     elseif k == K"quote"
         if kind(ex[1]) == K"block"

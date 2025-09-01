@@ -32,6 +32,9 @@ stmt_tests = [
     # postfix call
     "a'" => "(a)'"
     "(a+b)'" => "((a + b))'"
+    # do syntax
+    "f(x, y) do a, b\nbody\nend" => "f(x, y) do a, b\n~~body\nend"
+    "@f(x, y) do a, b\nbody\nend" => "@f(x, y) do a, b\n~~body\nend"
     # macrocall
     "@mac" => "@mac"
     "@mac a b c" => "@mac a b c"
