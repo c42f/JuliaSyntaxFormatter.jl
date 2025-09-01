@@ -42,6 +42,34 @@ function is_operator(x)
     JuliaSyntax.is_operator(x)
 end
 
+function escape_raw_string(str::AbstractString, delim)
+    io = IOBuffer()
+    i = firstindex(str)
+    while i <= lastindex(str)
+        nbslash = 0
+        while i <= lastindex(str) && str[i] == '\\'
+            i = nextind(str, i)
+            nbslash += 1
+        end
+        if nbslash > 0
+            if i > lastindex(str) || str[i] == delim
+                nbslash *= 2
+            end
+            for _ in 1:nbslash
+                write(io, '\\')
+            end
+        else
+            write(io, str[i])
+            i = nextind(str, i)
+        end
+    end
+    String(take!(io))
+end
+
+function escape_julia_string(str)
+    escape_string(str, "\"\$")
+end
+
 function _register_kinds()
     JuliaSyntax.register_kinds!(JuliaSyntaxFormatter, 2, [
         "BEGIN_FORMATTING_KINDS"
@@ -111,6 +139,9 @@ function emit(ctx::FormatContext, k::Kind)
 end
 
 function emit(ctx::FormatContext, ::Nothing)
+end
+
+function emit(ctx::FormatContext)
 end
 
 function emit(ctx::FormatContext, tok::FormatToken) 
@@ -196,6 +227,27 @@ end
 function format_generator_body(ctx::FormatContext, ex)
     emit(ctx, ex[1], K"WS+", K"for", K"WS+")
     format_join(ctx, ex[2:end], K"WS+", K"for", K"WS+")
+end
+
+function format_string(ctx::FormatContext, ex, raw_string)
+    @assert kind(ex) == K"string"
+    delim = has_flags(ex, JuliaSyntax.TRIPLE_STRING_FLAG) ? K"\"\"\"" : K"\""
+    emit(ctx, delim)
+    for (i,c) in enumerate(children(ex))
+        if kind(c) == K"String"
+            escaped_str = raw_string ?
+                escape_raw_string(c.value, '\"') :
+                escape_julia_string(c.value)
+            emit(ctx, c, escaped_str) # TODO: Format preservation and `keep="\n"` etc??
+        else
+            if kind(c) == K"Identifier" && (i == numchildren(ex) || (kind(ex[i+1]) == K"String" && !JuliaSyntax.Tokenize.is_identifier_char(first(ex[i+1].value))))
+                emit(ctx, K"$", c)
+            else
+                emit(ctx, K"$", K"(", c, K")")
+            end
+        end
+    end
+    emit(ctx, delim)
 end
 
 # Transform an expression tree into a stream of tokens and ranges
@@ -348,7 +400,22 @@ function format_tree(ctx::FormatContext, ex)
         format_multiline_body(ctx, ex[2])
         emit(ctx, K"end")
     elseif k == K"macrocall"
-        format_join(ctx, children(ex), K"WS+")
+        if kind(ex[1]) == K"StringMacroName"
+            namestr = ex[1].name_val # Strip out @ and _str parts of name
+            emit(ctx, ex[1], namestr[2:end-4])
+            format_string(ctx, ex[2], true)
+            if numchildren(ex) >= 3
+                if kind(ex[3]) == K"String"
+                    suff = ex[3].value
+                    @assert Base.isidentifier(suff)
+                    emit(ctx, ex[3], suff)
+                else
+                    emit(ctx, ex[3])
+                end
+            end
+        else
+            format_join(ctx, children(ex), K"WS+")
+        end
     elseif k == K"quote"
         if kind(ex[1]) == K"block"
             emit(ctx, K"quote")
@@ -367,20 +434,7 @@ function format_tree(ctx::FormatContext, ex)
             emit(ctx, K"WS+", ex[1])
         end
     elseif k == K"string"
-        delim = has_flags(ex, JuliaSyntax.TRIPLE_STRING_FLAG) ? K"\"\"\"" : K"\""
-        emit(ctx, delim)
-        for (i,c) in enumerate(children(ex))
-            if kind(c) == K"String"
-                emit(ctx, c, escape_string(c.value, "\"\$")) # TODO: Format preservation and `keep="\n"` etc??
-            else
-                if kind(c) == K"Identifier" && (i == numchildren(ex) || (kind(ex[i+1]) == K"String" && !JuliaSyntax.Tokenize.is_identifier_char(first(ex[i+1].value))))
-                    emit(ctx, K"$", c)
-                else
-                    emit(ctx, K"$", K"(", c, K")")
-                end
-            end
-        end
-        emit(ctx, delim)
+        format_string(ctx, ex, has_flags(ex, JuliaSyntax.RAW_STRING_FLAG))
     elseif k == K"struct"
         if has_flags(ex, JuliaSyntax.MUTABLE_FLAG)
             emit(ctx, K"mutable", K"WS+")
@@ -396,6 +450,16 @@ function format_tree(ctx::FormatContext, ex)
         emit(ctx, K"]")
     elseif k == K"vect"
         format_bracketed_list(ctx, children(ex), K"[", K"]")
+    elseif k == K"vcat"
+        emit(ctx, K"[")
+        format_multiline(ctx, children(ex))
+        emit(ctx, K"]")
+    elseif k == K"hcat"
+        emit(ctx, K"[")
+        format_join(ctx, children(ex), K"WS+")
+        emit(ctx, K"]")
+    elseif k == K"row"
+        format_join(ctx, children(ex), K"WS+")
     elseif k == K"while"
         emit(ctx, K"while", K"WS+", ex[1])
         format_multiline_body(ctx, ex[2])
@@ -448,6 +512,7 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     # See also JuliaLowering._value_string
     k = kind(ex)
     str = k == K"Identifier" || k == K"MacroName" || is_operator(k) ? ex.name_val :
+          k == K"String"     ? escape_julia_string(ex.value) :
           k == K"Placeholder" ? ex.name_val :
           k == K"SSAValue"   ? "%"                   :
           k == K"BindingId"  ? "#"                   :

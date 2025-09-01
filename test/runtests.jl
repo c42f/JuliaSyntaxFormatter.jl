@@ -6,6 +6,11 @@ using JuliaSyntax, JuliaLowering
 
 # Indentation is represented here as `~~` for ease of readability
 stmt_tests = [
+    # strings
+    "\"hi\"" => "\"hi\"" 
+    "\"h\\ni\"" => "\"h\\ni\"" 
+    "\"h\\\"i\"" => "\"h\\\"i\"" 
+    "\"h\\\$i\"" => "\"h\\\$i\"" 
     # block
     "begin end" => "begin\nend"
     "begin\nx\nend" => "begin\n~~x\nend"
@@ -27,6 +32,14 @@ stmt_tests = [
     # postfix call
     "a'" => "(a)'"
     "(a+b)'" => "((a + b))'"
+    # macrocall
+    "@mac" => "@mac"
+    "@mac a b c" => "@mac a b c"
+    "strmac\"blah\"" => "strmac\"blah\""
+    "strmac\"blah\"suffix" => "strmac\"blah\"suffix"
+    "strmac\"blah\"1" => "strmac\"blah\"1"
+    "strmac\"\\\\\"" => "strmac\"\\\\\""
+    "strmac\"\\ \"" => "strmac\"\\ \""
     # for
     "for x in xs\nend" => "for x in xs\nend"
     "for x in xs\na\nend" => "for x in xs\n~~a\nend"
@@ -69,6 +82,10 @@ stmt_tests = [
     # vect
     "[x,]" => "[x]"
     "[x, y]" => "[x, y]"
+    # concatenation
+    "[x y z]" => "[x y z]"
+    "[x;y;z]" => "[\n~~x\n~~y\n~~z\n]"
+    "[x y;z]" => "[\n~~x y\n~~z\n]"
     # braces
     "{x,}" => "{x}"
     "{x, y}" => "{x, y}"
