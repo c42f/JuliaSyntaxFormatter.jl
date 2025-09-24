@@ -39,10 +39,15 @@ stmt_tests = [
     "@mac" => "@mac"
     "@mac a b c" => "@mac a b c"
     "strmac\"blah\"" => "strmac\"blah\""
+    "strmac\"`\"" => "strmac\"`\""
     "strmac\"blah\"suffix" => "strmac\"blah\"suffix"
     "strmac\"blah\"1" => "strmac\"blah\"1"
     "strmac\"\\\\\"" => "strmac\"\\\\\""
     "strmac\"\\ \"" => "strmac\"\\ \""
+    "cmdmac`blah`" => "cmdmac`blah`"
+    "cmdmac`\"`" => "cmdmac`\"`"
+    "cmdmac`\\\\`" => "cmdmac`\\\\`"
+    "cmdmac`\\ `" => "cmdmac`\\ `"
     # for
     "for x in xs\nend" => "for x in xs\nend"
     "for x in xs\na\nend" => "for x in xs\n~~a\nend"
@@ -61,6 +66,10 @@ stmt_tests = [
     "let x=1,y=2\nend" => "let x = 1, y = 2\nend"
     "let\nbody\nend" => "let\n~~body\nend"
     "let x=1\nbody\nend" => "let x = 1\n~~body\nend"
+    # module
+    "module A\nend" => "module A\nend"
+    "module A\nx\nend" => "module A\n~~x\nend"
+    "baremodule A\nx\nend" => "baremodule A\n~~x\nend"
     # struct
     "struct X\nend" => "struct X\nend"
     "struct X\na\nend" => "struct X\n~~a\nend"

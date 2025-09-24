@@ -230,13 +230,16 @@ function format_generator_body(ctx::FormatContext, ex)
 end
 
 function format_string(ctx::FormatContext, ex, raw_string)
-    @assert kind(ex) == K"string"
-    delim = has_flags(ex, JuliaSyntax.TRIPLE_STRING_FLAG) ? K"\"\"\"" : K"\""
+    iscmd = kind(ex) == K"cmdstring"
+    @assert kind(ex) == K"string" || iscmd
+    delim = has_flags(ex, JuliaSyntax.TRIPLE_STRING_FLAG) ?
+            (iscmd ? K"```" : K"\"\"\"") :
+            (iscmd ? K"`"   : K"\""    )
     emit(ctx, delim)
     for (i,c) in enumerate(children(ex))
-        if kind(c) == K"String"
+        if kind(c) == K"String" || kind(c) == K"CmdString"
             escaped_str = raw_string ?
-                escape_raw_string(c.value, '\"') :
+                escape_raw_string(c.value, iscmd ? '`' : '\"') :
                 escape_julia_string(c.value)
             emit(ctx, c, escaped_str) # TODO: Format preservation and `keep="\n"` etc??
         else
@@ -415,10 +418,9 @@ function format_tree(ctx::FormatContext, ex)
         format_multiline_body(ctx, ex[2])
         emit(ctx, K"end")
     elseif k == K"macrocall"
-        if kind(ex[1]) == K"StringMacroName"
+        if kind(ex[1]) in KSet"StrMacroName CmdMacroName"
             @assert numchildren(ex) in (2,3)
-            namestr = ex[1].name_val # Strip out @ and _str parts of name
-            emit(ctx, ex[1], namestr[2:end-4])
+            emit(ctx, ex[1])
             format_string(ctx, ex[2], true)
             if numchildren(ex) >= 3
                 if kind(ex[3]) == K"String"
@@ -433,7 +435,7 @@ function format_tree(ctx::FormatContext, ex)
             has_do = numchildren(ex) >= 2 && kind(ex[end]) == K"do"
             needs_parens = has_do
             if needs_parens
-                format_tree(ctx, ex[1])
+                emit(ctx, ex[1])
                 emit(ctx, K"(", K"WS??")
                 lastarg = ex[end]
                 format_join_arglist(ctx, ex[2:end-has_do])
@@ -445,6 +447,18 @@ function format_tree(ctx::FormatContext, ex)
                 format_join(ctx, children(ex), K"WS+")
             end
         end
+    elseif k == K"macro_name"
+        if kind(ex[1]) == K"."
+            emit(ctx, ex[1], K".", K"@", ex[2])
+        else
+            emit(ctx, K"@", ex[1])
+        end
+    elseif k == K"module"
+        emit(ctx,
+             has_flags(ex, JuliaSyntax.BARE_MODULE_FLAG) ? K"baremodule" : K"module",
+             K"WS+", ex[1])
+        format_multiline_body(ctx, ex[2])
+        emit(ctx, K"end")
     elseif k == K"quote"
         if kind(ex[1]) == K"block"
             emit(ctx, K"quote")
@@ -540,9 +554,10 @@ function format_token_str_default(ex::SyntaxTree; include_var_id=false)
     @assert is_leaf(ex)
     # See also JuliaLowering._value_string
     k = kind(ex)
-    str = k == K"Identifier" || k == K"MacroName" || is_operator(k) ? ex.name_val :
+    str = k == K"Identifier" || is_operator(k) ? ex.name_val :
           k == K"String"     ? escape_julia_string(ex.value) :
           k == K"Placeholder" ? ex.name_val :
+          k == K"StrMacroName" || k == K"CmdMacroName" ? ex.name_val :
           k == K"SSAValue"   ? "%"                   :
           k == K"BindingId"  ? "#"                   :
           k == K"label"      ? "label"               :
